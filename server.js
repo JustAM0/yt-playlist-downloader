@@ -148,7 +148,7 @@ app.get('/api/download', async (req, res) => {
 
     try {
 const args = [
-    '-f', 'bestaudio',
+    '-f', 'bestaudio/bestaudio*/best',
     '--extract-audio',
     '--audio-format', 'mp3',
     '--audio-quality', '0',

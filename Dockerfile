@@ -5,6 +5,10 @@ RUN apt-get update && \
     pip3 install --break-system-packages --no-cache-dir yt-dlp && \
     rm -rf /var/lib/apt/lists/*
 
+# Install Deno for JavaScript runtime
+RUN curl -fsSL https://deno.land/install.sh | sh
+ENV PATH="/root/.deno/bin:${PATH}"
+
 WORKDIR /app
 
 COPY package*.json ./

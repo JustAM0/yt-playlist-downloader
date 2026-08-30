@@ -77,8 +77,11 @@ app.get('/api/download', async (req, res) => {
     '--no-check-certificates',
     '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     '--js-runtimes', 'deno',
+    '--extractor-args', 'youtube:player_client=web',
+    '--no-warnings',
     '-o', outputPath,
     url
+];
 ];
         await runYtDlp(args, { timeout: 120000 });
         if (!fs.existsSync(outputPath)) {

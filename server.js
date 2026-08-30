@@ -148,10 +148,8 @@ app.get('/api/download', async (req, res) => {
 
     try {
 const args = [
-    '-f', 'bestaudio/bestaudio*/best',
     '--extract-audio',
     '--audio-format', 'mp3',
-    '--audio-quality', '0',
     '--no-check-certificates',
     '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     '--js-runtimes', 'deno',

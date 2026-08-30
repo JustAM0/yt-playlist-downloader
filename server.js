@@ -38,16 +38,16 @@ app.get('/api/playlist', async (req, res) => {
     try {
         const playlistId = extractPlaylistId(url);
         
-        let args = [
-            '--flat-playlist',
-            '--dump-json',
-            '--no-check-certificates',
-            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            '--js-runtimes', 'deno',
-            '--extractor-args', 'youtube:player_client=web_music',
-            '--cookies', path.join(__dirname, 'cookies.txt'),
-            '--no-warnings',
-        ];
+       let args = [
+    '--flat-playlist',
+    '--dump-json',
+    '--no-check-certificates',
+    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    '--js-runtimes', 'deno',
+    '--extractor-args', 'youtube:player_client=web_music',
+    '--cookies', path.join(__dirname, 'cookies.txt'),
+    '--no-warnings',
+];
         
         if (playlistId) {
             args.push(`https://www.youtube.com/playlist?list=${playlistId}`);
@@ -104,18 +104,18 @@ app.get('/api/download', async (req, res) => {
 
     try {
         const args = [
-            '-f', 'bestaudio',
-            '--extract-audio',
-            '--audio-format', 'mp3',
-            '--no-check-certificates',
-            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            '--js-runtimes', 'deno',
-            '--extractor-args', 'youtube:player_client=web_music',
-            '--cookies', path.join(__dirname, 'cookies.txt'),
-            '--no-warnings',
-            '-o', outputPath,
-            url
-        ];
+    '-f', 'bestaudio',
+    '--extract-audio',
+    '--audio-format', 'mp3',
+    '--no-check-certificates',
+    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    '--js-runtimes', 'deno',
+    '--extractor-args', 'youtube:player_client=web_music',
+    '--cookies', path.join(__dirname, 'cookies.txt'),
+    '--no-warnings',
+    '-o', outputPath,
+    url
+];
 
         await runYtDlp(args, { timeout: 180000 });
 

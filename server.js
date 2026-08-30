@@ -45,7 +45,7 @@ app.get('/api/playlist', async (req, res) => {
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             '--js-runtimes', 'deno',
             '--extractor-args', 'youtube:player_client=web_music',
-            '--cookies', 'cookies.txt',
+            '--cookies', path.join(__dirname, 'cookies.txt'),
             '--no-warnings',
         ];
         
@@ -111,7 +111,7 @@ app.get('/api/download', async (req, res) => {
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             '--js-runtimes', 'deno',
             '--extractor-args', 'youtube:player_client=web_music',
-            '--cookies', 'cookies.txt',
+            '--cookies', path.join(__dirname, 'cookies.txt'),
             '--no-warnings',
             '-o', outputPath,
             url

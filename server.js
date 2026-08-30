@@ -69,7 +69,17 @@ app.get('/api/download', async (req, res) => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ytmp3-'));
     const outputPath = path.join(tempDir, `${safeTitle || 'audio'}.mp3`);
     try {
-        const args = ['-f', 'bestaudio/best', '--extract-audio', '--audio-format', 'mp3', '--audio-quality', '0', '-o', outputPath, url];
+        const args = [
+    '-f', 'bestaudio/best',
+    '--extract-audio',
+    '--audio-format', 'mp3',
+    '--audio-quality', '0',
+    '--no-check-certificates',
+    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    '--js-runtimes', 'deno',
+    '-o', outputPath,
+    url
+];
         await runYtDlp(args, { timeout: 120000 });
         if (!fs.existsSync(outputPath)) {
             throw new Error('Conversion failed, output file not created');

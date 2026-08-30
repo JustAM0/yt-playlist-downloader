@@ -147,8 +147,8 @@ app.get('/api/download', async (req, res) => {
     const outputPath = path.join(tempDir, `${safeTitle || 'audio'}.mp3`);
 
     try {
- const args = [
-    '-f', 'bestaudio/bestaudio*/best',
+const args = [
+    '-f', 'bestaudio',
     '--extract-audio',
     '--audio-format', 'mp3',
     '--audio-quality', '0',

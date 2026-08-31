@@ -12,7 +12,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Run yt-dlp command
+// Helper to run yt-dlp and capture output
 function runYtDlp(args, options = {}) {
     return new Promise((resolve, reject) => {
         const ytDlpPath = process.env.YTDLP_PATH || 'yt-dlp';
@@ -23,111 +23,76 @@ function runYtDlp(args, options = {}) {
     });
 }
 
-// Extract playlist ID from YouTube Music URL
+// Extract playlist ID from YouTube or YouTube Music URL
 function extractPlaylistId(url) {
     // Convert music.youtube.com to www.youtube.com
     url = url.replace('music.youtube.com', 'www.youtube.com');
-    
-    // Match ?list=PLAYLIST_ID
     const match = url.match(/[?&]list=([a-zA-Z0-9_-]+)/);
     if (match) return match[1];
-    
-    // Match playlist/PLAYLIST_ID
     const altMatch = url.match(/playlist\/([a-zA-Z0-9_-]+)/);
-    if (altMatch) return altMatch[1];
-    
-    return null;
+    return altMatch ? altMatch[1] : null;
 }
 
-// Common yt-dlp arguments for YouTube Music
-function getCommonArgs() {
+// Common arguments for YouTube / YouTube Music
+function getCommonYtArgs() {
     return [
         '--no-check-certificates',
         '--no-warnings',
         '--cookies', path.join(__dirname, 'cookies.txt'),
         '--extractor-args', 'youtube:player_client=android',
-        '--user-agent', 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        '--user-agent', 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
     ];
 }
 
-// GET /api/playlist - Fetch YouTube Music playlist
+// Endpoint: Fetch playlist metadata and entries
 app.get('/api/playlist', async (req, res) => {
     const { url } = req.query;
-    
-    if (!url) {
-        return res.status(400).json({ error: 'Playlist URL is required' });
-    }
+    if (!url) return res.status(400).json({ error: 'Playlist URL is required' });
 
     const playlistId = extractPlaylistId(url);
-    
-    if (!playlistId) {
-        return res.status(400).json({ error: 'Invalid YouTube Music playlist URL' });
-    }
+    if (!playlistId) return res.status(400).json({ error: 'Invalid playlist URL' });
+
+    const playlistUrl = `https://www.youtube.com/playlist?list=${playlistId}`;
 
     try {
-        const playlistUrl = `https://www.youtube.com/playlist?list=${playlistId}`;
-        
         const args = [
-            '--flat-playlist',
-            '--dump-json',
-            ...getCommonArgs(),
+            '--dump-single-json',
+            '--skip-download',
+            ...getCommonYtArgs(),
             playlistUrl
         ];
 
         const stdout = await runYtDlp(args);
-        const lines = stdout.trim().split('\n').filter(Boolean);
+        const data = JSON.parse(stdout);
 
-        if (lines.length === 0) {
-            throw new Error('No videos found in playlist');
-        }
-
-        const videos = lines.map(line => {
-            try {
-                const data = JSON.parse(line);
-                return {
-                    id: data.id,
-                    title: data.title || 'Unknown',
-                    url: `https://www.youtube.com/watch?v=${data.id}`,
-                    duration: data.duration || 0,
-                    thumbnail: data.thumbnail || `https://i.ytimg.com/vi/${data.id}/mqdefault.jpg`
-                };
-            } catch (e) {
-                return null;
-            }
-        }).filter(v => v !== null);
-
-        const firstVideo = JSON.parse(lines[0]);
-        const playlistTitle = firstVideo.playlist_title || 'YouTube Music Playlist';
-        const channel = firstVideo.uploader || firstVideo.channel || 'YouTube Music';
+        // Extract videos from entries
+        const videos = (data.entries || []).map(entry => ({
+            id: entry.id,
+            title: entry.title || 'Unknown',
+            url: `https://www.youtube.com/watch?v=${entry.id}`,
+            duration: entry.duration || 0,
+            thumbnail: entry.thumbnail || `https://i.ytimg.com/vi/${entry.id}/mqdefault.jpg`
+        })).filter(v => v.id);
 
         res.json({
-            title: playlistTitle,
-            channel: channel,
+            title: data.title || 'Playlist',
+            channel: data.uploader || data.channel || 'Unknown',
             thumbnail: videos[0]?.thumbnail || '',
-            videos: videos
+            videos
         });
-
     } catch (err) {
-        console.error('Playlist error:', err.message);
+        console.error('Playlist fetch error:', err.message);
         res.status(500).json({ error: `Failed to load playlist: ${err.message}` });
     }
 });
 
-// GET /api/download - Download single track as MP3
+// Endpoint: Download a single track as MP3
 app.get('/api/download', async (req, res) => {
     const { url, title } = req.query;
-    
-    if (!url) {
-        return res.status(400).json({ error: 'Video URL is required' });
-    }
+    if (!url) return res.status(400).json({ error: 'Video URL is required' });
 
-    const safeTitle = (title || 'audio')
-        .replace(/[^\w\s-]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 100) || 'audio';
-
-    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ytmusic-'));
+    const safeTitle = (title || 'audio').replace(/[^\w\s-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 100) || 'audio';
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ytmp3-'));
     const outputPath = path.join(tempDir, `${safeTitle}.mp3`);
 
     try {
@@ -135,7 +100,7 @@ app.get('/api/download', async (req, res) => {
             '-f', 'bestaudio',
             '--extract-audio',
             '--audio-format', 'mp3',
-            ...getCommonArgs(),
+            ...getCommonYtArgs(),
             '-o', outputPath,
             url
         ];
@@ -148,14 +113,12 @@ app.get('/api/download', async (req, res) => {
 
         res.setHeader('Content-Type', 'audio/mpeg');
         res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.mp3"`);
-        
         const fileStream = fs.createReadStream(outputPath);
         fileStream.pipe(res);
 
         fileStream.on('close', () => {
             fs.rmSync(tempDir, { recursive: true, force: true });
         });
-
     } catch (err) {
         console.error('Download error:', err.message);
         if (fs.existsSync(tempDir)) {
@@ -167,7 +130,17 @@ app.get('/api/download', async (req, res) => {
 
 // Health check
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok', service: 'YouTube Music Downloader' });
+    res.json({ status: 'ok', service: 'YT Music Downloader' });
+});
+
+// yt-dlp version check (useful for debugging)
+app.get('/version', async (req, res) => {
+    try {
+        const stdout = await runYtDlp(['--version']);
+        res.json({ version: stdout.trim() });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // Serve frontend
@@ -180,5 +153,5 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🎵 YouTube Music Downloader running on port ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });

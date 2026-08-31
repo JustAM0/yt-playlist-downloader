@@ -48,25 +48,65 @@ function getCommonYtArgs() {
 // Endpoint: Fetch playlist metadata and entries
 app.get('/api/playlist', async (req, res) => {
     const { url } = req.query;
-    if (!url) return res.status(400).json({ error: 'Playlist URL is required' });
+    if (!url) return res.status(400).json({ error: 'URL is required' });
 
+    // Check if it's a single video URL (contains 'watch?v=')
+    const videoIdMatch = url.match(/[?&]v=([a-zA-Z0-9_-]+)/);
+    if (videoIdMatch) {
+        // Handle single video
+        const videoId = videoIdMatch[1];
+        const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        try {
+            const args = [
+                '--dump-single-json',
+                '--skip-download',
+                '--no-check-certificates',
+                '--no-warnings',
+                '--cookies', path.join(__dirname, 'cookies.txt'),
+                '--extractor-args', 'youtube:player_client=android',
+                '--user-agent', 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+                '--js-runtimes', 'node',
+                videoUrl
+            ];
+            const stdout = await runYtDlp(args);
+            const data = JSON.parse(stdout);
+            const video = {
+                id: data.id,
+                title: data.title || 'Unknown',
+                url: videoUrl,
+                duration: data.duration || 0,
+                thumbnail: data.thumbnail || `https://i.ytimg.com/vi/${data.id}/mqdefault.jpg`
+            };
+            return res.json({
+                title: video.title,
+                channel: data.uploader || data.channel || 'Unknown',
+                thumbnail: video.thumbnail,
+                videos: [video]
+            });
+        } catch (err) {
+            return res.status(500).json({ error: `Failed to load video: ${err.message}` });
+        }
+    }
+
+    // Existing playlist handling
     const playlistId = extractPlaylistId(url);
     if (!playlistId) return res.status(400).json({ error: 'Invalid playlist URL' });
 
     const playlistUrl = `https://www.youtube.com/playlist?list=${playlistId}`;
-
     try {
         const args = [
             '--dump-single-json',
             '--skip-download',
-            ...getCommonYtArgs(),
+            '--no-check-certificates',
+            '--no-warnings',
+            '--cookies', path.join(__dirname, 'cookies.txt'),
+            '--extractor-args', 'youtube:player_client=android',
+            '--user-agent', 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+            '--js-runtimes', 'node',
             playlistUrl
         ];
-
         const stdout = await runYtDlp(args);
         const data = JSON.parse(stdout);
-
-        // Extract videos from entries
         const videos = (data.entries || []).map(entry => ({
             id: entry.id,
             title: entry.title || 'Unknown',
@@ -74,7 +114,6 @@ app.get('/api/playlist', async (req, res) => {
             duration: entry.duration || 0,
             thumbnail: entry.thumbnail || `https://i.ytimg.com/vi/${entry.id}/mqdefault.jpg`
         })).filter(v => v.id);
-
         res.json({
             title: data.title || 'Playlist',
             channel: data.uploader || data.channel || 'Unknown',
@@ -82,7 +121,6 @@ app.get('/api/playlist', async (req, res) => {
             videos
         });
     } catch (err) {
-        console.error('Playlist fetch error:', err.message);
         res.status(500).json({ error: `Failed to load playlist: ${err.message}` });
     }
 });

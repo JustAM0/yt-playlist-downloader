@@ -12,7 +12,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Helper to run yt-dlp and capture output
 function runYtDlp(args, options = {}) {
     return new Promise((resolve, reject) => {
         const ytDlpPath = process.env.YTDLP_PATH || 'yt-dlp';
@@ -23,9 +22,7 @@ function runYtDlp(args, options = {}) {
     });
 }
 
-// Extract playlist ID from YouTube or YouTube Music URL
 function extractPlaylistId(url) {
-    // Convert music.youtube.com to www.youtube.com
     url = url.replace('music.youtube.com', 'www.youtube.com');
     const match = url.match(/[?&]list=([a-zA-Z0-9_-]+)/);
     if (match) return match[1];
@@ -33,9 +30,8 @@ function extractPlaylistId(url) {
     return altMatch ? altMatch[1] : null;
 }
 
-// Common arguments for YouTube / YouTube Music
-function getCommonYtArgs() {
-    return [
+function getCommonArgs() {
+    const args = [
         '--no-check-certificates',
         '--no-warnings',
         '--cookies', path.join(__dirname, 'cookies.txt'),
@@ -43,29 +39,27 @@ function getCommonYtArgs() {
         '--user-agent', 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
         '--js-runtimes', 'node'
     ];
+    // Add proxy if environment variable is set
+    if (process.env.YTDLP_PROXY) {
+        args.push('--proxy', process.env.YTDLP_PROXY);
+    }
+    return args;
 }
 
-// Endpoint: Fetch playlist metadata and entries
 app.get('/api/playlist', async (req, res) => {
     const { url } = req.query;
     if (!url) return res.status(400).json({ error: 'URL is required' });
 
-    // Check if it's a single video URL (contains 'watch?v=')
+    // Single video handling
     const videoIdMatch = url.match(/[?&]v=([a-zA-Z0-9_-]+)/);
     if (videoIdMatch) {
-        // Handle single video
         const videoId = videoIdMatch[1];
         const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
         try {
             const args = [
                 '--dump-single-json',
                 '--skip-download',
-                '--no-check-certificates',
-                '--no-warnings',
-                '--cookies', path.join(__dirname, 'cookies.txt'),
-                '--extractor-args', 'youtube:player_client=android',
-                '--user-agent', 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-                '--js-runtimes', 'node',
+                ...getCommonArgs(),
                 videoUrl
             ];
             const stdout = await runYtDlp(args);
@@ -88,7 +82,7 @@ app.get('/api/playlist', async (req, res) => {
         }
     }
 
-    // Existing playlist handling
+    // Playlist handling
     const playlistId = extractPlaylistId(url);
     if (!playlistId) return res.status(400).json({ error: 'Invalid playlist URL' });
 
@@ -97,12 +91,7 @@ app.get('/api/playlist', async (req, res) => {
         const args = [
             '--dump-single-json',
             '--skip-download',
-            '--no-check-certificates',
-            '--no-warnings',
-            '--cookies', path.join(__dirname, 'cookies.txt'),
-            '--extractor-args', 'youtube:player_client=android',
-            '--user-agent', 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-            '--js-runtimes', 'node',
+            ...getCommonArgs(),
             playlistUrl
         ];
         const stdout = await runYtDlp(args);
@@ -125,7 +114,6 @@ app.get('/api/playlist', async (req, res) => {
     }
 });
 
-// Endpoint: Download a single track as MP3
 app.get('/api/download', async (req, res) => {
     const { url, title } = req.query;
     if (!url) return res.status(400).json({ error: 'Video URL is required' });
@@ -139,58 +127,23 @@ app.get('/api/download', async (req, res) => {
             '-f', 'bestaudio',
             '--extract-audio',
             '--audio-format', 'mp3',
-            ...getCommonYtArgs(),
+            ...getCommonArgs(),
             '-o', outputPath,
             url
         ];
-
         await runYtDlp(args, { timeout: 180000 });
-
-        if (!fs.existsSync(outputPath)) {
-            throw new Error('MP3 file not created');
-        }
-
+        if (!fs.existsSync(outputPath)) throw new Error('MP3 file not created');
         res.setHeader('Content-Type', 'audio/mpeg');
         res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.mp3"`);
         const fileStream = fs.createReadStream(outputPath);
         fileStream.pipe(res);
-
-        fileStream.on('close', () => {
-            fs.rmSync(tempDir, { recursive: true, force: true });
-        });
+        fileStream.on('close', () => fs.rmSync(tempDir, { recursive: true, force: true }));
     } catch (err) {
-        console.error('Download error:', err.message);
-        if (fs.existsSync(tempDir)) {
-            fs.rmSync(tempDir, { recursive: true, force: true });
-        }
+        if (fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true, force: true });
         res.status(500).json({ error: `Download failed: ${err.message}` });
     }
 });
 
-// Health check
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', service: 'YT Music Downloader' });
-});
-
-// yt-dlp version check (useful for debugging)
-app.get('/version', async (req, res) => {
-    try {
-        const stdout = await runYtDlp(['--version']);
-        res.json({ version: stdout.trim() });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// Serve frontend
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'), err => {
-        if (err) {
-            res.send('Frontend not found. Create public/index.html');
-        }
-    });
-});
-
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.listen(PORT, () => console.log(`Server running on ${PORT}`));
